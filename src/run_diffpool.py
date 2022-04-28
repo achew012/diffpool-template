@@ -1,24 +1,26 @@
-from common.utils import *
-from transformers import AutoTokenizer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import pytorch_lightning as pl
-from data.data import NERDataset
-from model.model import NERLongformerQA
 from torch.utils.data import DataLoader
 import os
 import ast
 from typing import Dict, Any, List, Tuple
 from omegaconf import OmegaConf
 import hydra
+import ipdb
 from clearml import Task, StorageManager, Dataset as ClearML_Dataset
+
+
+from data.data import GraphDataset
+from model.GraphModel import GraphEmbedding
+from torch_geometric.data import DenseDataLoader, DataLoader
+
 
 Task.force_requirements_env_freeze(
     force=True, requirements_file="requirements.txt")
-Task.add_requirements("git+https://github.com/huggingface/datasets.git")
+
 Task.add_requirements("hydra-core")
 Task.add_requirements("pytorch-lightning")
-Task.add_requirements("jsonlines")
 
 
 def get_clearml_params(task: Task) -> Dict[str, Any]:
@@ -41,52 +43,42 @@ def get_clearml_params(task: Task) -> Dict[str, Any]:
 
 def get_dataloader(split_name, cfg) -> DataLoader:
     """Get training and validation dataloaders"""
-    clearml_data_object = ClearML_Dataset.get(
-        dataset_name=cfg.clearml_dataset_name,
-        dataset_project=cfg.clearml_dataset_project_name,
-        dataset_tags=list(cfg.clearml_dataset_tags),
-        # only_published=True,
-    )
-    dataset_path = clearml_data_object.get_local_copy()
+    # =============================================================================
+    #     clearml_data_object = ClearML_Dataset.get(
+    #         dataset_name=cfg.clearml_dataset_name,
+    #         dataset_project=cfg.clearml_dataset_project_name,
+    #         dataset_tags=list(cfg.clearml_dataset_tags),
+    #         # only_published=True,
+    #     )
+    # =============================================================================
 
-    # dataset_split = read_json_multiple_templates(
-    #     os.path.join(dataset_path, "{}.json".format(split_name))
-    # )
+    raw_dataset = GraphDataset(cfg)
+    n = (len(raw_dataset) + 9) // 10
+    cfg['num_features'] = raw_dataset.num_features
 
-    dataset_split = read_json(os.path.join(
-        dataset_path, "{}.json".format(split_name)))
+    ipdb.set_trace()
 
-    if cfg.debug:
-        dataset_split = dataset_split[:25]
-
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, use_fast=True)
-    dataset = NERDataset(dataset=dataset_split, tokenizer=tokenizer, cfg=cfg)
-
-    if split_name in ["dev", "test"]:
-        return DataLoader(
-            dataset,
-            batch_size=cfg.template_size,
-            num_workers=cfg.num_workers,
-            collate_fn=NERDataset.collate_fn,
-            # shuffle=True,
+    if split_name == "dev":
+        return cfg, DenseDataLoader(
+            raw_dataset[n: 2 * n], batch_size=cfg.batch_size, num_workers=5, collate_fn=GraphDataset.collate_fn
+        )
+    elif split_name == "test":
+        return cfg, DenseDataLoader(
+            test_dataset=raw_dataset[:n], batch_size=cfg.batch_size, num_workers=5, collate_fn=GraphDataset.collate_fn
         )
     else:
-        return DataLoader(
-            dataset,
-            batch_size=cfg.template_size,
-            num_workers=cfg.num_workers,
-            collate_fn=NERDataset.collate_fn,
-            # shuffle=True,
+        return cfg, DenseDataLoader(
+            raw_dataset[2 * n:], batch_size=cfg.batch_size, shuffle=True, num_workers=5, collate_fn=GraphDataset.collate_fn
         )
 
 
-def train(cfg, task) -> NERLongformerQA:
+def train(cfg, task) -> GraphEmbedding:
     callbacks = []
 
     if cfg.checkpointing:
         checkpoint_callback = ModelCheckpoint(
             dirpath="./",
-            filename="best_ner_model",
+            filename="best_embedding_model",
             monitor="val_loss",
             mode="min",
             save_top_k=1,
@@ -101,10 +93,11 @@ def train(cfg, task) -> NERLongformerQA:
         )
         callbacks.append(early_stop_callback)
 
-    train_loader = get_dataloader("train", cfg)
-    val_loader = get_dataloader("dev", cfg)
+    cfg, train_loader = get_dataloader("train", cfg)
+    cfg, val_loader = get_dataloader("dev", cfg)
 
-    model = NERLongformerQA(cfg, task)
+    model = GraphEmbedding(cfg, task)
+
     trainer = pl.Trainer(
         gpus=cfg.gpu,
         max_epochs=cfg.num_epochs,
@@ -127,28 +120,17 @@ def hydra_main(cfg) -> float:
 
     pl.seed_everything(cfg.seed, workers=True)
 
-    tags = list(cfg.task_tags) + \
-        ["debug"] if cfg.debug else list(cfg.task_tags)
-    tags = (
-        tags + ["squad-pretrained"]
-        if cfg.model_name == "mrm8488/longformer-base-4096-finetuned-squadv2"
-        else tags + ["longformer-base"]
-    )
-    tags = tags + ["w_prompt_qns"] if cfg.add_prompt_qns else tags
-
     if cfg.train:
         task = Task.init(
-            project_name="LongQA",
-            task_name="ConversationalQA-NER-train",
+            project_name="DiffPool",
+            task_name="DP-train",
             output_uri="s3://experiment-logging/storage/",
-            tags=tags,
         )
     else:
         task = Task.init(
-            project_name="LongQA",
-            task_name="ConversationalQA-NER-predict",
+            project_name="DiffPool",
+            task_name="DP-predict",
             output_uri="s3://experiment-logging/storage/",
-            tags=tags,
         )
 
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
@@ -167,7 +149,7 @@ def hydra_main(cfg) -> float:
         if cfg.trained_model_path:
             trained_model_path = StorageManager.get_local_copy(
                 cfg.trained_model_path)
-            model = NERLongformerQA.load_from_checkpoint(
+            model = GraphEmbedding.load_from_checkpoint(
                 trained_model_path, cfg=cfg, task=task
             )
 

@@ -1,6 +1,6 @@
 torch
 boto3
-transformers==4.16.2
+
 pytorch-lightning
 datasets
 ipdb
@@ -9,3 +9,8 @@ jsonlines
 scipy
 clearml
 tqdm
+torch-scatter -f https://data.pyg.org/whl/torch-1.11.0+cu115.html
+torch-sparse -f https://data.pyg.org/whl/torch-1.11.0+cu115.html
+torch-cluster -f https://data.pyg.org/whl/torch-1.11.0+cu115.html
+torch-spline-conv -f https://data.pyg.org/whl/torch-1.11.0+cu115.html 
+torch-geometric -f https://data.pyg.org/whl/torch-1.11.0+cu115.html

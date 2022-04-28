@@ -10,7 +10,8 @@ import torch
 import torch.nn.functional as F
 
 from clearml import Dataset as ClearML_Dataset
-from utils import *
+from common.utils import *
+from model.DiffPool import DiffPool
 import ipdb
 
 
@@ -24,14 +25,14 @@ class GraphEmbedding(pl.LightningModule):
         self.task = task
         self.clearml_logger = self.task.get_logger()
 
-        clearml_data_object = ClearML_Dataset.get(
-            dataset_name=self.cfg.clearml_dataset_name,
-            dataset_project=self.cfg.clearml_dataset_project_name,
-            dataset_tags=list(self.cfg.clearml_dataset_tags),
-            only_published=False,
-        )
-        self.dataset_path = clearml_data_object.get_local_copy()
-
+        self.model = DiffPool(self.cfg)
+        # clearml_data_object = ClearML_Dataset.get(
+        #     dataset_name=self.cfg.clearml_dataset_name,
+        #     dataset_project=self.cfg.clearml_dataset_project_name,
+        #     dataset_tags=list(self.cfg.clearml_dataset_tags),
+        #     only_published=False,
+        # )
+        # self.dataset_path = clearml_data_object.get_local_copy()
 
     def forward(self, batch):
         output, _, _ = self.model(batch.x, batch.adj, batch.mask)
@@ -50,12 +51,11 @@ class GraphEmbedding(pl.LightningModule):
             total_loss.append(batch["loss"])
         self.log("train_loss", sum(total_loss) / len(total_loss))
 
-
-    def eval_step(self, batch): 
+    def eval_step(self, batch):
         loss, output = self.model(batch.x, batch.adj, batch.mask)
-        pred=output[0]
-        pred = cos_sim(pred, pred) # N * N                
-        top_k = torch.topk(pred, self.cfg.topk, dim=-1).indices[:,1:]
+        pred = output[0]
+        pred = cos_sim(pred, pred)  # N * N
+        top_k = torch.topk(pred, self.cfg.topk, dim=-1).indices[:, 1:]
         #groundtruth_matrix = batch.y.squeeze(dim=-1).repeat(batch.y.shape[0], 1)
         #print("gt: ", groundtruth_matrix.shape)
         groundtruth_matrix = generate_indicator_matrix(batch)
@@ -66,10 +66,10 @@ class GraphEmbedding(pl.LightningModule):
     def val_step(self, batch, batch_nb):
         """Call the forward pass then return loss"""
         if batch.x.shape[0] < 30:
-            loss=None
-            hit_k_normalized=None
-        else:  
-            loss, hit_k_normalized = self.eval_step(**batch)                
+            loss = None
+            hit_k_normalized = None
+        else:
+            loss, hit_k_normalized = self.eval_step(**batch)
         return {"loss": loss, "hit_k_normalized": hit_k_normalized}
 
     def validation_epoch_end(self, outputs):
@@ -91,12 +91,13 @@ class GraphEmbedding(pl.LightningModule):
         num_batches = len(outputs)
         for batch in outputs:
             pred = batch["pred"]
-            correct += pred.eq(batch['batch'].y.view(-1)).sum().item()            
+            correct += pred.eq(batch['batch'].y.view(-1)).sum().item()
         self.log("accuracy", correct / len(num_batches)*self.cfg.batch_size)
 
     def configure_optimizers(self):
         """Configure the optimizer and the learning rate scheduler"""
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.cfg.lr)
+
         return {
             "optimizer": optimizer,
             "lr_scheduler": {

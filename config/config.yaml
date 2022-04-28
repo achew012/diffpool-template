@@ -1,16 +1,19 @@
 seed: 1234
-lr: 1e-05
-dropout: 0.2
-warmup: 1000
-num_workers: 4
-every_n_epochs: 5
-max_prediction_span: 25
-max_output_len: 128
-max_input_len: 1024
-batch_size: 16
-eval_batch_size: 8
-template_size: 6
+lr: 1e-04
 grad_accum: 4
 grad_ckpt: True
+gpu: 1
 fp16: False
+max_nodes: 150
+num_features: 1
+num_epochs: 100
+batch_size: 512
+every_n_epochs: 10
+debug: False
+early_stopping: True
+remote: False
+checkpointing: True
+train: True
+test: True
+
 

@@ -8,14 +8,15 @@ Created on Wed Apr 27 14:47:22 2022
 from math import ceil
 import torch
 import torch.nn.functional as F
-import GNN
+from model.GNN import GNN
 from torch_geometric.nn import dense_diff_pool
+
 
 class DiffPool(torch.nn.Module):
     def __init__(self, cfg):
         super(DiffPool, self).__init__()
         self.cfg = cfg
-        num_nodes = ceil(0.25 * cfg.max_nodes)       
+        num_nodes = ceil(0.25 * cfg.max_nodes)
         #self.gnn1_pool = GNN(dataset.num_features, 64, num_nodes)
         #self.gnn1_embed = GNN(dataset.num_features, 64, 64)
 
@@ -38,7 +39,7 @@ class DiffPool(torch.nn.Module):
         x, adj, l1, e1 = dense_diff_pool(x, adj, s, mask)
         #x_1 = s_0.t() @ z_0
         #adj_1 = s_0.t() @ adj_0 @ s_0
-        
+
         s = self.gnn2_pool(x, adj)
         x = self.gnn2_embed(x, adj)
 
