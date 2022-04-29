@@ -26,7 +26,6 @@ class DiffPool(torch.nn.Module):
         num_nodes = ceil(0.25 * num_nodes)
         self.gnn2_pool = GNN(64, 64, num_nodes)
         self.gnn2_embed = GNN(64, 64, 64, lin=False)
-
         self.gnn3_embed = GNN(64, 64, 64, lin=False)
 
         self.lin1 = torch.nn.Linear(64, 64)

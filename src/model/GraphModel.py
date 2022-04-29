@@ -35,14 +35,16 @@ class GraphEmbedding(pl.LightningModule):
         # self.dataset_path = clearml_data_object.get_local_copy()
 
     def forward(self, batch):
-        output, _, _ = self.model(batch.x, batch.adj, batch.mask)
+        output, l_norm, entropy_reg = self.model(
+            batch.x, batch.adj, batch.mask)
         sim_mat = cos_sim(output, output)
         loss = torch.nn.MSELoss()(sim_mat, generate_indicator_matrix(batch).type_as(output))
         return loss, output
 
     def training_step(self, batch, batch_nb):
+        ipdb.set_trace()
         """Call the forward pass then return loss"""
-        loss, output = self.forward(**batch)
+        loss, output = self.forward(batch)
         return {"loss": loss}
 
     def training_epoch_end(self, outputs):

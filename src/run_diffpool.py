@@ -2,6 +2,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
+from torch_geometric.data import LightningDataset
 import os
 import ast
 from typing import Dict, Any, List, Tuple
@@ -56,20 +57,33 @@ def get_dataloader(split_name, cfg) -> DataLoader:
     n = (len(raw_dataset) + 9) // 10
     cfg['num_features'] = raw_dataset.num_features
 
-    ipdb.set_trace()
+    pl_dataset = LightningDataset(
+        train_dataset=raw_dataset[2 * n:],
+        val_dataset=raw_dataset[n: 2 * n],
+        test_dataset=raw_dataset[:n],
+        batch_size=cfg.batch_size,
+        num_workers=5
+    )
 
     if split_name == "dev":
-        return cfg, DenseDataLoader(
-            raw_dataset[n: 2 * n], batch_size=cfg.batch_size, num_workers=5, collate_fn=GraphDataset.collate_fn
-        )
+        return cfg, pl_dataset.val_dataloader()
     elif split_name == "test":
-        return cfg, DenseDataLoader(
-            test_dataset=raw_dataset[:n], batch_size=cfg.batch_size, num_workers=5, collate_fn=GraphDataset.collate_fn
-        )
+        return cfg, pl_dataset.test_dataloader()
     else:
-        return cfg, DenseDataLoader(
-            raw_dataset[2 * n:], batch_size=cfg.batch_size, shuffle=True, num_workers=5, collate_fn=GraphDataset.collate_fn
-        )
+        return cfg, pl_dataset.train_dataloader()
+
+    # if split_name == "dev":
+    #     return cfg, DenseDataLoader(
+    #         raw_dataset[n: 2 * n], batch_size=cfg.batch_size, num_workers=5, collate_fn=GraphDataset.collate_fn
+    #     )
+    # elif split_name == "test":
+    #     return cfg, DenseDataLoader(
+    #         test_dataset=raw_dataset[:n], batch_size=cfg.batch_size, num_workers=5, collate_fn=GraphDataset.collate_fn
+    #     )
+    # else:
+    #     return cfg, DenseDataLoader(
+    #         raw_dataset[2 * n:], batch_size=cfg.batch_size, shuffle=True, num_workers=5, collate_fn=GraphDataset.collate_fn
+    #     )
 
 
 def train(cfg, task) -> GraphEmbedding:
