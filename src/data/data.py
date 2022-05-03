@@ -1,3 +1,4 @@
+from json.tool import main
 import torch
 from torch.utils.data import Dataset
 from typing import List, Any, Dict
@@ -5,9 +6,10 @@ import ipdb
 from torch_geometric.datasets import GNNBenchmarkDataset
 import torch_geometric.transforms as T
 
+
 # class MyFilter(object):
 #     def __call__(self, data):
-#         return data.num_nodes <= max_nodes
+#         return data.num_nodes <= 150
 
 
 class GraphDataset(GNNBenchmarkDataset):

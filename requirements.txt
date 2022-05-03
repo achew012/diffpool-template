@@ -1,6 +1,7 @@
-torch
 boto3
-
+torch -f https://download.pytorch.org/whl/cu113
+torchvision -f https://download.pytorch.org/whl/cu113
+torchaudio -f https://download.pytorch.org/whl/cu113
 pytorch-lightning
 datasets
 ipdb

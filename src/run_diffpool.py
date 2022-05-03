@@ -19,7 +19,6 @@ from torch_geometric.data import DenseDataLoader, DataLoader
 
 Task.force_requirements_env_freeze(
     force=True, requirements_file="requirements.txt")
-
 Task.add_requirements("hydra-core")
 Task.add_requirements("pytorch-lightning")
 
@@ -57,33 +56,33 @@ def get_dataloader(split_name, cfg) -> DataLoader:
     n = (len(raw_dataset) + 9) // 10
     cfg['num_features'] = raw_dataset.num_features
 
-    pl_dataset = LightningDataset(
-        train_dataset=raw_dataset[2 * n:],
-        val_dataset=raw_dataset[n: 2 * n],
-        test_dataset=raw_dataset[:n],
-        batch_size=cfg.batch_size,
-        num_workers=5
-    )
-
-    if split_name == "dev":
-        return cfg, pl_dataset.val_dataloader()
-    elif split_name == "test":
-        return cfg, pl_dataset.test_dataloader()
-    else:
-        return cfg, pl_dataset.train_dataloader()
+    # pl_dataset = LightningDataset(
+    #     train_dataset=raw_dataset[2 * n:],
+    #     val_dataset=raw_dataset[n: 2 * n],
+    #     test_dataset=raw_dataset[:n],
+    #     batch_size=cfg.batch_size,
+    #     num_workers=5
+    # )
 
     # if split_name == "dev":
-    #     return cfg, DenseDataLoader(
-    #         raw_dataset[n: 2 * n], batch_size=cfg.batch_size, num_workers=5, collate_fn=GraphDataset.collate_fn
-    #     )
+    #     return cfg, pl_dataset.val_dataloader()
     # elif split_name == "test":
-    #     return cfg, DenseDataLoader(
-    #         test_dataset=raw_dataset[:n], batch_size=cfg.batch_size, num_workers=5, collate_fn=GraphDataset.collate_fn
-    #     )
+    #     return cfg, pl_dataset.test_dataloader()
     # else:
-    #     return cfg, DenseDataLoader(
-    #         raw_dataset[2 * n:], batch_size=cfg.batch_size, shuffle=True, num_workers=5, collate_fn=GraphDataset.collate_fn
-    #     )
+    #     return cfg, pl_dataset.train_dataloader()
+
+    if split_name == "val":
+        return cfg, DenseDataLoader(
+            raw_dataset[n: 2 * n], batch_size=cfg.batch_size, num_workers=5
+        )
+    elif split_name == "test":
+        return cfg, DenseDataLoader(
+            raw_dataset[:n], batch_size=cfg.batch_size, num_workers=5
+        )
+    else:
+        return cfg, DenseDataLoader(
+            raw_dataset[2 * n:], batch_size=cfg.batch_size, shuffle=True, num_workers=5
+        )
 
 
 def train(cfg, task) -> GraphEmbedding:
@@ -108,7 +107,7 @@ def train(cfg, task) -> GraphEmbedding:
         callbacks.append(early_stop_callback)
 
     cfg, train_loader = get_dataloader("train", cfg)
-    cfg, val_loader = get_dataloader("dev", cfg)
+    cfg, val_loader = get_dataloader("val", cfg)
 
     model = GraphEmbedding(cfg, task)
 
@@ -123,7 +122,7 @@ def train(cfg, task) -> GraphEmbedding:
 
 
 def test(cfg, model) -> List:
-    test_loader = get_dataloader("test", cfg)
+    cfg, test_loader = get_dataloader("test", cfg)
     trainer = pl.Trainer(gpus=cfg.gpu, max_epochs=cfg.num_epochs)
     results = trainer.test(model, test_loader)
     return results
@@ -133,6 +132,10 @@ def test(cfg, model) -> List:
 def hydra_main(cfg) -> float:
 
     pl.seed_everything(cfg.seed, workers=True)
+
+    from torch_geometric.datasets import GNNBenchmarkDataset
+
+    GNNBenchmarkDataset(root="/tmp/CIFAR10", name="CIFAR10")
 
     if cfg.train:
         task = Task.init(
@@ -166,8 +169,8 @@ def hydra_main(cfg) -> float:
             model = GraphEmbedding.load_from_checkpoint(
                 trained_model_path, cfg=cfg, task=task
             )
-
-        results = test(cfg, model)
+        if model:
+            results = test(cfg, model)
 
 
 if __name__ == "__main__":

@@ -26,12 +26,14 @@ class GraphEmbedding(pl.LightningModule):
         self.clearml_logger = self.task.get_logger()
 
         self.model = DiffPool(self.cfg)
+
         # clearml_data_object = ClearML_Dataset.get(
         #     dataset_name=self.cfg.clearml_dataset_name,
         #     dataset_project=self.cfg.clearml_dataset_project_name,
         #     dataset_tags=list(self.cfg.clearml_dataset_tags),
         #     only_published=False,
         # )
+
         # self.dataset_path = clearml_data_object.get_local_copy()
 
     def forward(self, batch):
@@ -42,7 +44,6 @@ class GraphEmbedding(pl.LightningModule):
         return loss, output
 
     def training_step(self, batch, batch_nb):
-        ipdb.set_trace()
         """Call the forward pass then return loss"""
         loss, output = self.forward(batch)
         return {"loss": loss}
@@ -54,9 +55,8 @@ class GraphEmbedding(pl.LightningModule):
         self.log("train_loss", sum(total_loss) / len(total_loss))
 
     def eval_step(self, batch):
-        loss, output = self.model(batch.x, batch.adj, batch.mask)
-        pred = output[0]
-        pred = cos_sim(pred, pred)  # N * N
+        loss, output = self(batch)
+        pred = cos_sim(output, output)  # N * N
         top_k = torch.topk(pred, self.cfg.topk, dim=-1).indices[:, 1:]
         #groundtruth_matrix = batch.y.squeeze(dim=-1).repeat(batch.y.shape[0], 1)
         #print("gt: ", groundtruth_matrix.shape)
@@ -65,27 +65,31 @@ class GraphEmbedding(pl.LightningModule):
         hit_k = selected_graph.sum()
         return loss, (hit_k / (ground_truth_count(batch) - batch.y.shape[0]))
 
-    def val_step(self, batch, batch_nb):
+    def validation_step(self, batch, batch_nb):
         """Call the forward pass then return loss"""
         if batch.x.shape[0] < 30:
             loss = None
             hit_k_normalized = None
         else:
-            loss, hit_k_normalized = self.eval_step(**batch)
+            loss, hit_k_normalized = self.eval_step(batch)
         return {"loss": loss, "hit_k_normalized": hit_k_normalized}
 
     def validation_epoch_end(self, outputs):
         hit_rate = []
+        loss = []
         for batch in outputs:
             batch_hit_k_normalized = batch["hit_k_normalized"]
+            batch_loss = batch["loss"]
+            loss.append(batch_loss)
             if batch_hit_k_normalized:
                 hit_rate.append(batch_hit_k_normalized)
         self.log("hits_K", torch.tensor(hit_rate).mean())
+        self.log("val_loss", torch.tensor(loss).mean())
 
     def test_step(self, batch, batch_nb):
         """Call the forward pass then return loss"""
-        loss, output = self(batch.x, batch.adj, batch.mask)
-        pred = output[0].max(dim=1)[1]
+        loss, output = self(batch)
+        pred = output.max(dim=1)[1]
         return {"loss": loss, "batch": batch, "pred": pred}
 
     def test_epoch_end(self, outputs):
@@ -94,7 +98,7 @@ class GraphEmbedding(pl.LightningModule):
         for batch in outputs:
             pred = batch["pred"]
             correct += pred.eq(batch['batch'].y.view(-1)).sum().item()
-        self.log("accuracy", correct / len(num_batches)*self.cfg.batch_size)
+        self.log("accuracy", correct / (num_batches*self.cfg.batch_size))
 
     def configure_optimizers(self):
         """Configure the optimizer and the learning rate scheduler"""

@@ -6,12 +6,15 @@ gpu: 1
 fp16: False
 max_nodes: 150
 num_features: 1
+topk: 10
 num_epochs: 100
 batch_size: 512
 every_n_epochs: 10
 debug: False
 early_stopping: True
+queue: compute2
 remote: False
+trained_model_path: 
 checkpointing: True
 train: True
 test: True
